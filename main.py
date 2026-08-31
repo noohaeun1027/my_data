@@ -20,7 +20,8 @@ url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/seoul.csv"
 @st.cache_data
 def load_data():
     # CSV 파일 읽기
-    df = pd.read_csv(url, encoding="cp949")
+    # GitHub 파일은 UTF-8 인코딩 사용
+    df = pd.read_csv(url, encoding="utf-8")
 
     # 열 이름 공백 제거
     df.columns = df.columns.str.strip()
@@ -37,6 +38,9 @@ def load_data():
         errors="coerce"
     )
 
+    # 결측값 제거
+    df = df.dropna(subset=["평균기온"])
+
     # 연도별 평균기온 계산
     yearly_temp = (
         df.groupby("연도")["평균기온"]
@@ -48,9 +52,10 @@ def load_data():
 
 
 try:
+    # 데이터 불러오기
     df, yearly_temp = load_data()
 
-    # 데이터 정보 표시
+    # 데이터 정보
     st.subheader("📊 데이터 정보")
 
     col1, col2, col3 = st.columns(3)
@@ -78,7 +83,9 @@ try:
     ax.plot(
         yearly_temp["연도"],
         yearly_temp["평균기온"],
-        linewidth=1.8
+        marker="o",
+        markersize=2,
+        linewidth=1.5
     )
 
     ax.set_title(
@@ -94,29 +101,37 @@ try:
 
     plt.tight_layout()
 
+    # 스트림릿에 그래프 출력
     st.pyplot(fig)
 
-    # 변화량 계산
+    # 기온 변화량 계산
     first_temp = yearly_temp.iloc[0]["평균기온"]
     last_temp = yearly_temp.iloc[-1]["평균기온"]
     change = last_temp - first_temp
 
+    # 변화 요약
     st.subheader("🔎 기온 변화 요약")
+
+    st.metric(
+        "전체 기간 평균기온 변화",
+        f"{change:.2f}℃",
+        delta=f"{change:.2f}℃"
+    )
 
     if change > 0:
         st.success(
-            f"{yearly_temp.iloc[0]['연도']}년부터 "
-            f"{yearly_temp.iloc[-1]['연도']}년까지 "
-            f"연평균 기온은 약 {change:.2f}℃ 상승했습니다."
+            f"{int(yearly_temp.iloc[0]['연도'])}년부터 "
+            f"{int(yearly_temp.iloc[-1]['연도'])}년까지 "
+            f"서울의 연평균 기온은 약 {change:.2f}℃ 상승했습니다."
         )
     else:
         st.info(
-            f"전체 기간 동안 연평균 기온은 약 "
-            f"{abs(change):.2f}℃ 변화했습니다."
+            f"전체 기간 동안 연평균 기온은 "
+            f"약 {abs(change):.2f}℃ 변화했습니다."
         )
 
     # 데이터 보기
-    with st.expander("연도별 평균기온 데이터 보기"):
+    with st.expander("📋 연도별 평균기온 데이터 보기"):
         st.dataframe(
             yearly_temp,
             use_container_width=True
@@ -124,4 +139,4 @@ try:
 
 except Exception as e:
     st.error("데이터를 불러오는 중 오류가 발생했습니다.")
-    st.write(e)
+    st.exception(e)
