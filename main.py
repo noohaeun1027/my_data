@@ -141,16 +141,11 @@ except Exception as e:
     st.error("데이터를 불러오는 중 오류가 발생했습니다.")
     st.exception(e)
 
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-
-# ---------------------------------
-# 기본 설정
-# ---------------------------------
 st.set_page_config(
     page_title="기온 예측기",
     page_icon="🌡️",
@@ -158,36 +153,32 @@ st.set_page_config(
 )
 
 st.title("🌡️ 기온 예측기")
-st.write("서울의 연평균기온을 이용해 연도에 따른 기온 변화를 살펴봅니다.")
+st.write("서울의 연평균기온 데이터를 이용해 기온 변화를 확인합니다.")
 
-
-# ---------------------------------
-# 데이터 주소
-# ---------------------------------
 DATA_URL = "https://raw.githubusercontent.com/greatsong/modudata/bb860932644270ad1199f10d3e7670e30231bce4/data/seoul.csv"
 
 
-# ---------------------------------
-# 데이터 불러오기
-# ---------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv(DATA_URL, encoding="utf-8")
 
-    # 날짜 변환
+    # 날짜를 문자열로 바꾼 뒤 앞뒤 공백 제거
+    df["날짜"] = df["날짜"].astype(str).str.strip()
+
+    # 8자리 날짜를 날짜 형식으로 변환
     df["날짜"] = pd.to_datetime(
-        df["날짜"].astype(str),
+        df["날짜"],
         format="%Y%m%d",
         errors="coerce"
     )
 
-    # 평균기온 숫자로 변환
+    # 평균기온 숫자 변환
     df["평균기온"] = pd.to_numeric(
         df["평균기온"],
         errors="coerce"
     )
 
-    # 필요한 데이터만 남기기
+    # 날짜와 평균기온이 없는 자료 제거
     df = df.dropna(subset=["날짜", "평균기온"])
 
     # 연도 만들기
@@ -198,17 +189,15 @@ def load_data():
 
 df = load_data()
 
-
-# ---------------------------------
-# 2025년까지의 데이터만 사용
-# ---------------------------------
+# --------------------------------
+# 2025년까지의 자료만 사용
+# --------------------------------
 df = df[df["연도"] <= 2025].copy()
 
 
-# ---------------------------------
+# --------------------------------
 # 연도별 평균기온 계산
-# 관측일수가 300일 이상인 해만 사용
-# ---------------------------------
+# --------------------------------
 yearly = (
     df.groupby("연도")
     .agg(
@@ -218,32 +207,55 @@ yearly = (
     .reset_index()
 )
 
+# 관측일수 300일 이상인 해만 사용
 yearly = yearly[yearly["관측일수"] >= 300].copy()
 
 yearly = yearly.sort_values("연도").reset_index(drop=True)
 
 
-# ---------------------------------
+# --------------------------------
 # 데이터 확인
-# ---------------------------------
+# --------------------------------
+st.subheader("📊 데이터 확인")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("전체 관측 자료", f"{len(df):,}개")
+
+with col2:
+    st.metric("분석에 사용한 해", f"{len(yearly)}개")
+
+with col3:
+    if len(yearly) > 0:
+        st.metric(
+            "분석 기간",
+            f"{int(yearly['연도'].min())}~{int(yearly['연도'].max())}"
+        )
+    else:
+        st.metric("분석 기간", "없음")
+
+
+# 데이터가 없는 경우
 if len(yearly) == 0:
-    st.error("분석할 데이터가 없습니다.")
-    st.write("날짜 형식이나 관측일수 조건을 확인해 주세요.")
+    st.error(
+        "분석에 사용할 연도가 없습니다. "
+        "날짜 또는 관측일수를 확인해 주세요."
+    )
     st.stop()
 
 
-# ---------------------------------
-# 독립 변수 만들기
+# --------------------------------
 # 1908년부터 지난 연수
-# ---------------------------------
+# --------------------------------
 yearly["지난연수"] = yearly["연도"] - 1908
 
 
-# ---------------------------------
+# --------------------------------
 # 회귀 분석
-# ---------------------------------
-x = yearly["지난연수"].to_numpy(dtype=float)
-y = yearly["연평균기온"].to_numpy(dtype=float)
+# --------------------------------
+x = yearly["지난연수"].values
+y = yearly["연평균기온"].values
 
 slope, intercept = np.polyfit(x, y, 1)
 
@@ -251,44 +263,16 @@ slope, intercept = np.polyfit(x, y, 1)
 correlation = np.corrcoef(x, y)[0, 1]
 
 
-# ---------------------------------
-# 회귀선의 예상값
-# ---------------------------------
+# 회귀선 계산
 yearly["회귀예측기온"] = (
     slope * yearly["지난연수"] + intercept
 )
 
 
-# ---------------------------------
-# 분석 기간 정보
-# ---------------------------------
-start_year = int(yearly["연도"].min())
-end_year = int(yearly["연도"].max())
-year_count = len(yearly)
-
-
-st.subheader("📊 회귀 분석에 사용한 기간")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("사용한 해의 개수", f"{year_count}개")
-
-with col2:
-    st.metric("시작 연도", f"{start_year}년")
-
-with col3:
-    st.metric("끝 연도", f"{end_year}년")
-
-st.write(
-    "2025년 이후 데이터와 관측일수가 300일 미만인 해는 제외했습니다."
-)
-
-
-# ---------------------------------
-# 상관계수
-# ---------------------------------
-st.subheader("📈 연도와 연평균기온의 관계")
+# --------------------------------
+# 회귀 분석 결과
+# --------------------------------
+st.subheader("📈 서울 연평균기온과 연도의 관계")
 
 st.metric(
     "상관계수",
@@ -296,9 +280,9 @@ st.metric(
 )
 
 
-# ---------------------------------
-# 산점도 + 회귀직선
-# ---------------------------------
+# --------------------------------
+# 산점도
+# --------------------------------
 fig = go.Figure()
 
 
@@ -309,11 +293,11 @@ fig.add_trace(
         y=yearly["연평균기온"],
         mode="markers",
         name="실제 연평균기온",
-        customdata=yearly[["관측일수"]],
+        customdata=yearly["관측일수"],
         hovertemplate=(
             "연도: %{x}년<br>"
             "연평균기온: %{y:.2f}℃<br>"
-            "관측일수: %{customdata[0]}일"
+            "관측일수: %{customdata}일"
             "<extra></extra>"
         )
     )
@@ -347,31 +331,41 @@ fig.update_layout(
     hovermode="x unified"
 )
 
-st.plotly_chart(fig, width="stretch")
+st.plotly_chart(fig, use_container_width=True)
 
 
-# ---------------------------------
-# 회귀식
-# ---------------------------------
+# --------------------------------
+# 회귀선 정보
+# --------------------------------
+start_year = int(yearly["연도"].min())
+end_year = int(yearly["연도"].max())
+year_count = len(yearly)
+
 st.write(
-    f"회귀식: 연평균기온 = "
-    f"{slope:.4f} × (연도 - 1908) + {intercept:.2f}"
+    f"회귀선을 만든 해의 개수: **{year_count}개**"
 )
 
 st.write(
-    f"회귀선을 만든 해의 개수: {year_count}개"
-    f" / 시작 연도: {start_year}년"
-    f" / 끝 연도: {end_year}년"
+    f"시작 연도: **{start_year}년**"
+)
+
+st.write(
+    f"끝 연도: **{end_year}년**"
+)
+
+st.write(
+    f"회귀식: "
+    f"연평균기온 = {slope:.4f} × (연도 - 1908) + {intercept:.2f}"
 )
 
 
-# ---------------------------------
-# 연도 선택
-# ---------------------------------
+# --------------------------------
+# 예상 기온
+# --------------------------------
 st.subheader("🔮 연도별 예상 기온")
 
 selected_year = st.slider(
-    "예상할 연도를 선택하세요.",
+    "연도를 선택하세요.",
     min_value=1900,
     max_value=2100,
     value=2025,
@@ -379,9 +373,7 @@ selected_year = st.slider(
 )
 
 
-# ---------------------------------
-# 선택한 연도의 예상 기온
-# ---------------------------------
+# 선택한 연도의 예상값
 selected_x = selected_year - 1908
 
 predicted_temp = (
@@ -395,9 +387,9 @@ st.metric(
 )
 
 
-# ---------------------------------
-# 1900~2100년 회귀 예측 그래프
-# ---------------------------------
+# --------------------------------
+# 1900~2100 회귀 예측 그래프
+# --------------------------------
 prediction_years = np.arange(1900, 2101)
 
 prediction_x = prediction_years - 1908
@@ -421,7 +413,7 @@ fig2.add_trace(
 )
 
 
-# 실제 데이터
+# 실제 관측 자료
 fig2.add_trace(
     go.Scatter(
         x=yearly["연도"],
@@ -459,5 +451,4 @@ fig2.update_layout(
     )
 )
 
-st.plotly_chart(fig2, width="stretch")
-
+st.plotly_chart(fig2, use_container_width=True)
