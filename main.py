@@ -141,7 +141,7 @@ except Exception as e:
     st.error("데이터를 불러오는 중 오류가 발생했습니다.")
     st.exception(e)
 
-```python
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -460,4 +460,4 @@ fig2.update_layout(
 )
 
 st.plotly_chart(fig2, width="stretch")
-```
+
